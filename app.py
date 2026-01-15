@@ -2,10 +2,10 @@ import io
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, Dict, List
+from typing import Tuple, Dict, List
 
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 # ----------------------------
 # Page setup
@@ -42,12 +42,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# ✅ Always create assets folder (so you never see “Folder not found”)
 ASSETS_DIR = Path(__file__).parent / "assets"
+ASSETS_DIR.mkdir(exist_ok=True)
 
 
-# ----------------------------
-# Data model
-# ----------------------------
 @dataclass(frozen=True)
 class Product:
     key: str
@@ -59,9 +58,7 @@ class Product:
     add_on: str
 
 
-# “World best picture” fallback:
-# We use Unsplash Source which always returns a high-quality photo for the keyword.
-# Replace these with YOUR real product photos in /assets for maximum accuracy.
+# High-quality fallback URLs (only used if your local images are missing)
 CATALOG: Dict[str, Product] = {
     "rope_3mm": Product(
         key="rope_3mm",
@@ -70,7 +67,7 @@ CATALOG: Dict[str, Product] = {
         fallback_url="https://source.unsplash.com/1600x900/?gold,rope,chain,jewelry",
         talk_track="Best seller. Durable and catches light nicely.",
         why_it_fits="Simple daily chain that looks clean solo or with a pendant. Rope pattern reflects light and hides small scratches well.",
-        add_on="Add a small pendant (cross, initial, or coin) + 2-year warranty/coverage.",
+        add_on="Add a small pendant (cross, initial, or coin) + cleaning kit.",
     ),
     "cuban_4mm": Product(
         key="cuban_4mm",
@@ -79,7 +76,7 @@ CATALOG: Dict[str, Product] = {
         fallback_url="https://source.unsplash.com/1600x900/?gold,cuban,chain,jewelry",
         talk_track="Clean, strong, and sits flat—this is the everyday flex chain.",
         why_it_fits="Still simple, but feels more premium than rope/figaro. Great for daily wear because it lays flat and looks bold without being loud.",
-        add_on="Match with a Cuban bracelet for a set (bundle discount).",
+        add_on="Match with a Cuban bracelet for a set (bundle deal).",
     ),
     "figaro_3_5mm": Product(
         key="figaro_3_5mm",
@@ -106,39 +103,9 @@ CATALOG: Dict[str, Product] = {
         fallback_url="https://source.unsplash.com/1600x900/?diamond,stud,earrings,jewelry",
         talk_track="Studs are the #1 forever piece—goes with everything.",
         why_it_fits="For simple daily wear, studs are unbeatable: clean, classic, and always appropriate.",
-        add_on="Offer a set: studs + tennis bracelet (bundle + upgrade options).",
+        add_on="Offer a set: studs + tennis bracelet (bundle + upgrade).",
     ),
 }
-
-
-# ----------------------------
-# Image utilities (never break)
-# ----------------------------
-def _center_text(draw: ImageDraw.ImageDraw, text: str, box: Tuple[int, int, int, int], font: ImageFont.ImageFont):
-    x0, y0, x1, y1 = box
-    w = x1 - x0
-    h = y1 - y0
-    tw, th = draw.textbbox((0, 0), text, font=font)[2:]
-    tx = x0 + (w - tw) // 2
-    ty = y0 + (h - th) // 2
-    draw.text((tx, ty), text, font=font, fill=(120, 120, 120))
-
-
-def make_placeholder(title: str, size: Tuple[int, int] = (1400, 800)) -> Image.Image:
-    img = Image.new("RGB", size, (220, 220, 220))
-    draw = ImageDraw.Draw(img)
-
-    # Simple “brand + product” placeholder
-    try:
-        font_big = ImageFont.truetype("DejaVuSans.ttf", 52)
-        font_small = ImageFont.truetype("DejaVuSans.ttf", 28)
-    except Exception:
-        font_big = ImageFont.load_default()
-        font_small = ImageFont.load_default()
-
-    _center_text(draw, title, (0, 0, size[0], size[1] - 60), font_big)
-    draw.text((20, size[1] - 45), "Grand Jewelers Pentagon City", font=font_small, fill=(90, 90, 90))
-    return img
 
 
 @st.cache_data(show_spinner=False)
@@ -163,12 +130,12 @@ def load_image(local_path: Path, fallback_url: str, title_for_placeholder: str) 
     except Exception:
         pass
 
-    # 3) Placeholder
-    return make_placeholder(title_for_placeholder), "placeholder"
+    # 3) Placeholder (simple gray)
+    img = Image.new("RGB", (1600, 900), (220, 220, 220))
+    return img, "placeholder"
 
 
 def budget_floor(label: str) -> int:
-    # Used only for recommendation logic
     if label == "Under $300":
         return 0
     if label == "$300–$500":
@@ -199,9 +166,9 @@ def recommend(budget_label: str, metal: str, style: str, occasion: str) -> Produ
     if b >= 1000:
         return CATALOG["cuban_4mm"]
 
-    # ~$500 daily simple gold chain (your original case)
-    if b >= 500 and metal in {"Yellow Gold", "White Gold", "Rose Gold"} and style == "Simple" and occasion == "Daily Wear":
-        return CATALOG["rope_3mm"]
+    # Under $300 daily simple gold chain: recommend Figaro as safe winner
+    if b < 300 and metal in {"Yellow Gold", "White Gold", "Rose Gold"} and style == "Simple" and occasion == "Daily Wear":
+        return CATALOG["figaro_3_5mm"]
 
     # Default simple classic
     return CATALOG["figaro_3_5mm"]
@@ -240,9 +207,8 @@ with right:
     st.image(img, use_container_width=True, caption=product.title)
 
     if src != "local":
-        # Small, non-annoying message (no scary red errors)
         st.caption(
-            f"⚠️ Using **{src}** image. To show YOUR real product photo, upload: `assets/{product.local_image}`"
+            f"⚠️ Using **{src}** image. To show your real product photo, upload: `assets/{product.local_image}`"
         )
 
     st.markdown('<div class="gj-hr"></div>', unsafe_allow_html=True)
@@ -256,20 +222,15 @@ with right:
     st.markdown("### 🔥 Easy add-on to increase ticket")
     st.write(product.add_on)
 
-    # Show missing image checklist
     expected_files = sorted({p.local_image for p in CATALOG.values()})
     missing: List[str] = [f for f in expected_files if not (ASSETS_DIR / f).exists()]
 
     with st.expander("📸 Missing Images Checklist (upload these to /assets)"):
-        if not ASSETS_DIR.exists():
-            st.warning("Folder not found: `assets/` (create it in the same folder as app.py).")
         if missing:
-            st.write("These files are missing right now:")
+            st.write("Missing right now:")
             for f in missing:
                 st.code(f"assets/{f}", language="text")
         else:
             st.success("All images found ✅")
 
-
-# Footer note
-st.caption("Tip: Use clean white background product photos for the most luxury look.")
+st.caption("Tip: Replace placeholder images with your real inventory photos for maximum trust and conversions.")
