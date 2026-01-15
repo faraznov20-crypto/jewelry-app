@@ -40,4 +40,20 @@ elif budget == "$1000+" and style == "Classic":
 elif budget == "$5000+":
     recommendation = "Real Diamond Tennis Bracelet"
     # Real Diamond Bracelet Picture (Silver/White Gold look)
-    image_url = "
+    image_url = "https://images.unsplash.com/photo-1599643477877-530eb83d70d2?w=400"
+
+# --- SHOW RESULT ---
+st.header("Recommended Item:")
+st.success(f"**{recommendation}**")
+st.image(image_url)
+
+# --- THE SMART SCRIPT ---
+st.write("---")
+st.subheader("🗣️ Sales Script")
+
+if occasion == "Gift":
+    st.info(f"Say this: 'This is our best-selling {metal} piece. It comes in a premium gift box and looks much more expensive than {budget}. They will love it.'")
+elif occasion == "Special Event":
+    st.info(f"Say this: 'This piece catches the light beautifully. It is designed to stand out at events and parties.'")
+else:
+    st.info(f"Say this: 'This {recommendation} is solid and durable. You can wear it to the gym or in the shower, no problem.'")
