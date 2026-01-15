@@ -35,7 +35,6 @@ elif budget == "$1000+" and style == "Classic":
 
 elif budget == "$5000+":
     recommendation = "Real Diamond Tennis Bracelet"
-    # I CHANGED THIS LINK BELOW TO A REAL BRACELET:
     image_url = "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400"
 
 # --- SHOW RESULT ---
@@ -51,5 +50,5 @@ if occasion == "Gift":
     st.info(f"Say this: 'This is our best-selling {metal} piece. It comes in a premium gift box and looks much more expensive than {budget}. They will love it.'")
 elif occasion == "Special Event":
     st.info(f"Say this: 'This piece catches the light beautifully. It is designed to stand out at events and parties.'")
-else: # Daily Wear
+else:
     st.info(f"Say this: 'This {recommendation} is solid and durable. You can wear it to the gym or in the shower, no problem.'")
