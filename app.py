@@ -28,18 +28,23 @@ st.write("---")
 st.header("Recommended Item:")
 st.success(f"**{recommendation}**")
 
-# 4. The Visuals (Stable Images)
+# 4. The Visuals & The Script
 if recommendation == "Thin Box Chain":
-    st.image("https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400", caption="Thin Silver Chain")
+    st.image("https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400")
+    st.info("🗣️ Say this: 'This is our classic daily chain. It is strong but very light.'")
 
 elif recommendation == "3mm Rope Chain":
-    st.image("https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=400", caption="Gold Rope Chain")
+    st.image("https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=400")
+    st.info("🗣️ Say this: 'The Rope chain is the best seller for men. It catches the light perfectly.'")
 
 elif recommendation == "Diamond Cross Pendant":
-    st.image("https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=400", caption="Diamond Pendant")
+    st.image("https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=400")
+    st.info("🗣️ Say this: 'This is a statement piece. It shines from across the room.'")
 
 elif recommendation == "Moissanite Tennis Bracelet":
-    st.image("https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400", caption="Moissanite Bracelet")
+    st.image("https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400")
+    st.info("🗣️ Say this: 'You get the diamond look for 10% of the price. Smart choice.'")
 
 elif recommendation == "Real Diamond Tennis Bracelet":
-    st.image("https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=400", caption="Real Diamond Tennis Bracelet")
+    st.image("https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=400")
+    st.info("🗣️ Say this: 'This is an investment. Pure luxury. It will last forever.'")
