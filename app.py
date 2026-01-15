@@ -4,12 +4,14 @@ st.set_page_config(page_title="Faraz Jewelry AI", page_icon="💎")
 
 st.title("💎 Faraz Jewelry Sales Tool")
 
-# 1. Ask the Questions
-budget = st.selectbox("What is the Customer's Budget?", ["$100", "$500", "$1000", "$1000+", "$5000+"])
-metal = st.selectbox("What Metal do they like?", ["Silver", "Gold", "White Gold", "Rose Gold"])
-style = st.selectbox("What Style?", ["Simple", "Classic", "Iced Out"])
+# --- SIDEBAR (THE QUESTIONS) ---
+st.sidebar.header("Customer Details")
+budget = st.sidebar.selectbox("What is the Customer's Budget?", ["$100", "$500", "$1000", "$1000+", "$5000+"])
+metal = st.sidebar.selectbox("What Metal do they like?", ["Silver", "Gold", "White Gold", "Rose Gold"])
+style = st.sidebar.selectbox("What Style?", ["Simple", "Classic", "Iced Out"])
 
-# 2. The Logic (Your 5 Rules)
+# --- MAIN PAGE (THE RECOMMENDATION) ---
+# The Logic
 recommendation = "Ask Manager for Help" 
 
 if budget == "$100" and metal == "Silver":
@@ -23,12 +25,11 @@ elif budget == "$1000+" and style == "Classic":
 elif budget == "$5000+":
     recommendation = "Real Diamond Tennis Bracelet"
 
-# 3. Show the Result
-st.write("---")
+# Show the Result
 st.header("Recommended Item:")
 st.success(f"**{recommendation}**")
 
-# 4. The Visuals & The Script
+# The Visuals & Script
 if recommendation == "Thin Box Chain":
     st.image("https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400")
     st.info("🗣️ Say this: 'This is our classic daily chain. It is strong but very light.'")
