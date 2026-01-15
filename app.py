@@ -48,4 +48,11 @@ st.image(image_url)
 
 # --- SCRIPT ---
 st.write("---")
-st.subheader("🗣️ Sales
+st.subheader("🗣️ Sales Script")
+
+if occasion == "Gift":
+    st.info(f"Say this: 'This {recommendation} is our best-seller. It comes in a premium gift box. They will love it.'")
+elif occasion == "Special Event":
+    st.info(f"Say this: 'This piece catches the light beautifully. It is designed to stand out at events.'")
+else:
+    st.info(f"Say this: 'This is solid and durable. You can wear it to the gym or in the shower, no problem.'")
