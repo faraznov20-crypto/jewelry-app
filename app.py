@@ -11,48 +11,56 @@ metal = st.sidebar.selectbox("Metal", ["Silver", "Gold", "White Gold", "Rose Gol
 style = st.sidebar.selectbox("Style", ["Simple", "Classic", "Iced Out"])
 occasion = st.sidebar.selectbox("Occasion", ["Daily Wear", "Gift", "Special Event"])
 
-# --- LOGIC START ---
-# We set a "Default" first, then override it if it matches a specific rule.
-recommendation = "Ask to see the Manager"
-image_url = "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400" # Generic Jewelry Image
+# --- THE SMARTER LOGIC ---
+# We determine the best product based on Metal and Budget logic
+item_name = "Silver Box Chain" # Safe fallback
+image_url = "https://m.media-amazon.com/images/I/51b+I0sS+QL._AC_UY1100_.jpg"
 
-# RULE 1: Silver Cheap ($100) -> Box Chain
-if budget == "$100" and metal == "Silver":
-    recommendation = "Thin Box Chain (Silver)"
-    image_url = "https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?w=400" # Silver Chain
+# LOGIC TREE
+if style == "Iced Out":
+    item_name = "Diamond Cross Pendant"
+    image_url = "https://m.media-amazon.com/images/I/61Z+2u+qLgL._AC_UY1100_.jpg"
 
-# RULE 2: Gold Medium ($500) -> Rope Chain
-elif budget == "$500" and metal == "Gold":
-    recommendation = "3mm Rope Chain (Gold)"
-    image_url = "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=400" # Gold Chain
+elif metal == "Gold":
+    if budget == "$5000+":
+        item_name = "Solid Gold Miami Cuban Link"
+        image_url = "https://m.media-amazon.com/images/I/61F9kL-xLcL._AC_UY1100_.jpg"
+    else:
+        item_name = "3mm Gold Rope Chain"
+        image_url = "https://m.media-amazon.com/images/I/71+q+Mh-K+L._AC_UY1100_.jpg"
 
-# RULE 3: Iced Out ($1000) -> Cross Pendant
-elif budget == "$1000" and style == "Iced Out":
-    recommendation = "Diamond Cross Pendant"
-    image_url = "https://images.unsplash.com/photo-1599643478518-17488fbbcd75?w=400" # Pendant
+elif metal == "Silver":
+    if budget == "$5000+":
+        item_name = "Real Diamond Tennis Bracelet (White Gold)"
+        image_url = "https://m.media-amazon.com/images/I/71rQ6Q01m+L._AC_UY1100_.jpg"
+    else:
+        item_name = "Sterling Silver Box Chain"
+        image_url = "https://m.media-amazon.com/images/I/51b+I0sS+QL._AC_UY1100_.jpg"
 
-# RULE 4: Classic Expensive ($1000+) -> Moissanite Bracelet
-elif budget == "$1000+" and style == "Classic":
-    recommendation = "Moissanite Tennis Bracelet"
-    image_url = "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400" # Rose Gold/Diamond Bangle look
+elif metal == "White Gold" or metal == "Platinum":
+    if budget == "$100":
+        item_name = "White Gold Plated Chain"
+        image_url = "https://m.media-amazon.com/images/I/51b+I0sS+QL._AC_UY1100_.jpg"
+    else:
+        item_name = "Moissanite Tennis Bracelet"
+        image_url = "https://m.media-amazon.com/images/I/71w-w-q-GgL._AC_UY1100_.jpg"
 
-# RULE 5: Super Rich ($5000+) -> Real Diamonds
-elif budget == "$5000+":
-    recommendation = "Real Diamond Tennis Bracelet"
-    image_url = "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=400" # Silver Diamond Bracelet
+elif metal == "Rose Gold":
+    item_name = "Rose Gold Rope Chain"
+    image_url = "https://m.media-amazon.com/images/I/61y8aK9vjLR._AC_UY1100_.jpg"
 
 # --- DISPLAY ---
 st.header("Recommended Item:")
-st.success(f"**{recommendation}**")
-st.image(image_url)
+st.success(f"**{item_name}**")
+st.image(image_url, width=400)
 
 # --- SCRIPT ---
 st.write("---")
 st.subheader("🗣️ Sales Script")
 
 if occasion == "Gift":
-    st.info(f"Say this: 'This {recommendation} is our best-seller. It comes in a premium gift box. They will love it.'")
+    st.info(f"Say this: 'This {item_name} is our best-selling gift. It looks incredible in the box and fits anyone perfectly.'")
 elif occasion == "Special Event":
-    st.info(f"Say this: 'This piece catches the light beautifully. It is designed to stand out at events.'")
+    st.info(f"Say this: 'The {item_name} is designed to catch the light. It will definitely stand out at your event.'")
 else:
-    st.info(f"Say this: 'This is solid and durable. You can wear it to the gym or in the shower, no problem.'")
+    st.info(f"Say this: 'This is solid and durable. You can wear this {item_name} every single day without worrying.'")
