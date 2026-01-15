@@ -1,111 +1,81 @@
 import streamlit as st
-from pathlib import Path
+from urllib.parse import quote
 
-# ---------- SETUP ----------
-st.set_page_config(page_title="Faraz Jewelry Sales Tool", page_icon="💎")
+st.set_page_config(page_title="Faraz Jewelry AI", page_icon="💎", layout="centered")
+
 st.title("💎 Faraz Jewelry Sales Tool")
 
-ASSETS = Path(__file__).parent / "assets"
+# ---------- Helpers ----------
+def placeholder_image(text: str) -> str:
+    """
+    Stable image that always loads.
+    Shows a clean image with the item name written on it.
+    """
+    t = quote(text)
+    return f"https://placehold.co/900x600?text={t}"
 
-# ---------- SIDEBAR (INPUTS) ----------
+def sales_script(item_name: str, budget: str, metal: str, occasion: str) -> str:
+    if occasion == "Gift":
+        return f"Say this: 'This {item_name} is a best-seller gift. It looks expensive and comes ready to gift. Perfect for your {budget} budget.'"
+    if occasion == "Special Event":
+        return f"Say this: 'This {item_name} will catch light and stand out. Great choice for a special event.'"
+    # Daily Wear
+    return f"Say this: 'This {item_name} is durable for daily wear. Comfortable, strong, and easy to style.'"
+
+# ---------- Sidebar Inputs ----------
 st.sidebar.header("Customer Details")
 budget = st.sidebar.selectbox("Budget", ["$100", "$500", "$1000", "$1000+", "$5000+"])
 metal = st.sidebar.selectbox("Metal", ["Silver", "Gold", "White Gold", "Rose Gold"])
 style = st.sidebar.selectbox("Style", ["Simple", "Classic", "Iced Out"])
 occasion = st.sidebar.selectbox("Occasion", ["Daily Wear", "Gift", "Special Event"])
 
-# ---------- ITEMS (NAME + IMAGE + SCRIPTS) ----------
-ITEMS = {
-    "thin_box_chain": {
-        "name": "Thin Box Chain",
-        "image": "thin_box_chain.jpg",
-        "script": {
-            "Daily Wear": "This is strong but light. Easy daily wear.",
-            "Gift": "Perfect gift. Clean look and fits anyone.",
-            "Special Event": "Simple but classy. Looks clean in photos.",
-        },
-    },
-    "rope_chain": {
-        "name": "3mm Rope Chain",
-        "image": "rope_chain.jpg",
-        "script": {
-            "Daily Wear": "Best seller. Durable and catches light nicely.",
-            "Gift": "This is our #1 gift chain. Looks expensive in the box.",
-            "Special Event": "This shines under lights. Great for going out.",
-        },
-    },
-    "cross_pendant": {
-        "name": "Diamond Cross Pendant",
-        "image": "cross_pendant.jpg",
-        "script": {
-            "Daily Wear": "Strong piece, great daily statement.",
-            "Gift": "Very meaningful gift. People love this style.",
-            "Special Event": "This stands out across the room. Big shine.",
-        },
-    },
-    "moissanite_bracelet": {
-        "name": "Moissanite Tennis Bracelet",
-        "image": "moissanite_bracelet.jpg",
-        "script": {
-            "Daily Wear": "Diamond look for less money. Smart daily luxury.",
-            "Gift": "Looks like diamonds. Huge wow gift.",
-            "Special Event": "Perfect for events. It sparkles hard.",
-        },
-    },
-    "diamond_tennis_bracelet": {
-        "name": "Real Diamond Tennis Bracelet",
-        "image": "diamond_tennis_bracelet.jpg",
-        "script": {
-            "Daily Wear": "Real luxury. Built to last.",
-            "Gift": "This is a serious gift. Pure class.",
-            "Special Event": "Top level shine. This is the showpiece.",
-        },
-    },
-}
+st.write(f"**Budget:** {budget} | **Metal:** {metal} | **Style:** {style} | **Occasion:** {occasion}")
 
-# ---------- RULE ENGINE (ONE PATH ONLY) ----------
-def pick_item(budget: str, metal: str, style: str) -> str:
-    # 1) Style priority
-    if style == "Iced Out":
-        return "cross_pendant"
+# ---------- Recommendation Logic (Simple + Predictable) ----------
+# Default safe pick
+item_name = "3mm Rope Chain"
+image_url = placeholder_image(item_name)
+upsell = None
 
-    # 2) Budget priority
-    if budget == "$5000+":
-        return "diamond_tennis_bracelet"
+# Your original 5 rules (clean + consistent)
+if budget == "$100" and metal == "Silver":
+    item_name = "Thin Box Chain"
+    image_url = placeholder_image(item_name)
 
-    if budget == "$1000+" and style == "Classic":
-        return "moissanite_bracelet"
+elif budget == "$500" and metal == "Gold":
+    item_name = "3mm Rope Chain"
+    image_url = placeholder_image(item_name)
 
-    # 3) Your original strong rules
-    if budget == "$100" and metal == "Silver":
-        return "thin_box_chain"
+elif budget == "$1000" and style == "Iced Out":
+    item_name = "Diamond Cross Pendant"
+    image_url = placeholder_image(item_name)
 
-    if budget == "$500" and metal == "Gold":
-        return "rope_chain"
+elif budget == "$1000+" and style == "Classic":
+    item_name = "Moissanite Tennis Bracelet"
+    image_url = placeholder_image(item_name)
 
-    # 4) Clean fallback (never weird)
-    # If metal is Silver -> show silver chain, else show gold rope chain
-    if metal == "Silver":
-        return "thin_box_chain"
-    return "rope_chain"
+elif budget == "$5000+":
+    item_name = "Real Diamond Tennis Bracelet"
+    image_url = placeholder_image(item_name)
 
-chosen_key = pick_item(budget, metal, style)
-chosen = ITEMS[chosen_key]
+# Style override (so “Iced Out” always feels iced out)
+# BUT if budget is $5000+, keep the diamond bracelet as main and suggest the pendant as upsell.
+if style == "Iced Out" and budget == "$5000+":
+    upsell = "Diamond Cross Pendant"
+elif style == "Iced Out" and budget != "$5000+":
+    item_name = "Diamond Cross Pendant"
+    image_url = placeholder_image(item_name)
 
-# ---------- DISPLAY ----------
-st.caption(f"Budget: {budget} | Metal: {metal} | Style: {style} | Occasion: {occasion}")
-
+# ---------- Display ----------
+st.write("---")
 st.header("Recommended Item:")
-st.success(f"**{chosen['name']}**")
+st.success(f"**{item_name}**")
 
-img_path = ASSETS / chosen["image"]
-if img_path.exists():
-    st.image(str(img_path), caption=chosen["name"])
-else:
-    st.error("Image file not found in /assets.")
-    st.write("Missing file:", chosen["image"])
-    st.write("Make sure you uploaded it to GitHub in the assets folder.")
+st.image(image_url, caption=item_name, use_container_width=True)
+
+if upsell:
+    st.info(f"Upsell idea: Also show **{upsell}** (iced-out option).")
 
 st.write("---")
 st.subheader("🗣️ Sales Script")
-st.info(f"Say this: '{chosen['script'][occasion]}'")
+st.info(sales_script(item_name, budget, metal, occasion))
