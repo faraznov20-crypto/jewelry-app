@@ -1,81 +1,275 @@
+import io
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Tuple, Dict, List
+
 import streamlit as st
-from urllib.parse import quote
+from PIL import Image, ImageDraw, ImageFont
 
-st.set_page_config(page_title="Faraz Jewelry AI", page_icon="💎", layout="centered")
+# ----------------------------
+# Page setup
+# ----------------------------
+st.set_page_config(
+    page_title="Grand Jewelers Pentagon City — Sales Tool",
+    page_icon="💎",
+    layout="wide",
+)
 
-st.title("💎 Faraz Jewelry Sales Tool")
-
-# ---------- Helpers ----------
-def placeholder_image(text: str) -> str:
+st.markdown(
     """
-    Stable image that always loads.
-    Shows a clean image with the item name written on it.
+    <style>
+      .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+      .gj-card {
+        border: 1px solid #e6e6e6;
+        border-radius: 14px;
+        padding: 16px;
+        background: white;
+      }
+      .gj-pill {
+        background: #e9f8ee;
+        color: #0f6a2a;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-weight: 600;
+        width: 100%;
+        display: inline-block;
+      }
+      .gj-muted { color: #6b7280; }
+      .gj-hr { border-top: 1px solid #eee; margin: 18px 0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+ASSETS_DIR = Path(__file__).parent / "assets"
+
+
+# ----------------------------
+# Data model
+# ----------------------------
+@dataclass(frozen=True)
+class Product:
+    key: str
+    title: str
+    local_image: str
+    fallback_url: str
+    talk_track: str
+    why_it_fits: str
+    add_on: str
+
+
+# “World best picture” fallback:
+# We use Unsplash Source which always returns a high-quality photo for the keyword.
+# Replace these with YOUR real product photos in /assets for maximum accuracy.
+CATALOG: Dict[str, Product] = {
+    "rope_3mm": Product(
+        key="rope_3mm",
+        title="3mm Rope Chain",
+        local_image="rope_chain.jpg",
+        fallback_url="https://source.unsplash.com/1600x900/?gold,rope,chain,jewelry",
+        talk_track="Best seller. Durable and catches light nicely.",
+        why_it_fits="Simple daily chain that looks clean solo or with a pendant. Rope pattern reflects light and hides small scratches well.",
+        add_on="Add a small pendant (cross, initial, or coin) + 2-year warranty/coverage.",
+    ),
+    "cuban_4mm": Product(
+        key="cuban_4mm",
+        title="4mm Cuban Link Chain",
+        local_image="cuban_chain.jpg",
+        fallback_url="https://source.unsplash.com/1600x900/?gold,cuban,chain,jewelry",
+        talk_track="Clean, strong, and sits flat—this is the everyday flex chain.",
+        why_it_fits="Still simple, but feels more premium than rope/figaro. Great for daily wear because it lays flat and looks bold without being loud.",
+        add_on="Match with a Cuban bracelet for a set (bundle discount).",
+    ),
+    "figaro_3_5mm": Product(
+        key="figaro_3_5mm",
+        title="3.5mm Figaro Chain",
+        local_image="figaro_chain.jpg",
+        fallback_url="https://source.unsplash.com/1600x900/?gold,figaro,chain,jewelry",
+        talk_track="Italian classic—simple pattern, always in style.",
+        why_it_fits="If they want simple and timeless, Figaro is the safe winner. Easy to wear daily, clean look, never goes out of style.",
+        add_on="Offer a free clasp upgrade (or cleaning kit) to close today.",
+    ),
+    "tennis_diamond": Product(
+        key="tennis_diamond",
+        title="Real Diamond Tennis Bracelet",
+        local_image="tennis_bracelet.jpg",
+        fallback_url="https://source.unsplash.com/1600x900/?diamond,tennis,bracelet,jewelry",
+        talk_track="This is the ‘quiet luxury’ piece—sparkle, but classy and everyday wearable.",
+        why_it_fits="High budget + simple style = tennis bracelet. It’s elegant, daily friendly, and looks expensive without trying hard.",
+        add_on="Add diamond studs for a matching ‘daily luxury’ set.",
+    ),
+    "studs_diamond": Product(
+        key="studs_diamond",
+        title="Diamond Stud Earrings",
+        local_image="diamond_studs.jpg",
+        fallback_url="https://source.unsplash.com/1600x900/?diamond,stud,earrings,jewelry",
+        talk_track="Studs are the #1 forever piece—goes with everything.",
+        why_it_fits="For simple daily wear, studs are unbeatable: clean, classic, and always appropriate.",
+        add_on="Offer a set: studs + tennis bracelet (bundle + upgrade options).",
+    ),
+}
+
+
+# ----------------------------
+# Image utilities (never break)
+# ----------------------------
+def _center_text(draw: ImageDraw.ImageDraw, text: str, box: Tuple[int, int, int, int], font: ImageFont.ImageFont):
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    tw, th = draw.textbbox((0, 0), text, font=font)[2:]
+    tx = x0 + (w - tw) // 2
+    ty = y0 + (h - th) // 2
+    draw.text((tx, ty), text, font=font, fill=(120, 120, 120))
+
+
+def make_placeholder(title: str, size: Tuple[int, int] = (1400, 800)) -> Image.Image:
+    img = Image.new("RGB", size, (220, 220, 220))
+    draw = ImageDraw.Draw(img)
+
+    # Simple “brand + product” placeholder
+    try:
+        font_big = ImageFont.truetype("DejaVuSans.ttf", 52)
+        font_small = ImageFont.truetype("DejaVuSans.ttf", 28)
+    except Exception:
+        font_big = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+
+    _center_text(draw, title, (0, 0, size[0], size[1] - 60), font_big)
+    draw.text((20, size[1] - 45), "Grand Jewelers Pentagon City", font=font_small, fill=(90, 90, 90))
+    return img
+
+
+@st.cache_data(show_spinner=False)
+def load_image(local_path: Path, fallback_url: str, title_for_placeholder: str) -> Tuple[Image.Image, str]:
     """
-    t = quote(text)
-    return f"https://placehold.co/900x600?text={t}"
+    Returns (image, source_label)
+    source_label: "local" | "web" | "placeholder"
+    """
+    # 1) Try local
+    try:
+        if local_path.exists():
+            return Image.open(local_path).convert("RGB"), "local"
+    except Exception:
+        pass
 
-def sales_script(item_name: str, budget: str, metal: str, occasion: str) -> str:
-    if occasion == "Gift":
-        return f"Say this: 'This {item_name} is a best-seller gift. It looks expensive and comes ready to gift. Perfect for your {budget} budget.'"
-    if occasion == "Special Event":
-        return f"Say this: 'This {item_name} will catch light and stand out. Great choice for a special event.'"
-    # Daily Wear
-    return f"Say this: 'This {item_name} is durable for daily wear. Comfortable, strong, and easy to style.'"
+    # 2) Try web fallback
+    try:
+        with urllib.request.urlopen(fallback_url, timeout=6) as resp:
+            data = resp.read()
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        return img, "web"
+    except Exception:
+        pass
 
-# ---------- Sidebar Inputs ----------
-st.sidebar.header("Customer Details")
-budget = st.sidebar.selectbox("Budget", ["$100", "$500", "$1000", "$1000+", "$5000+"])
-metal = st.sidebar.selectbox("Metal", ["Silver", "Gold", "White Gold", "Rose Gold"])
-style = st.sidebar.selectbox("Style", ["Simple", "Classic", "Iced Out"])
-occasion = st.sidebar.selectbox("Occasion", ["Daily Wear", "Gift", "Special Event"])
+    # 3) Placeholder
+    return make_placeholder(title_for_placeholder), "placeholder"
 
-st.write(f"**Budget:** {budget} | **Metal:** {metal} | **Style:** {style} | **Occasion:** {occasion}")
 
-# ---------- Recommendation Logic (Simple + Predictable) ----------
-# Default safe pick
-item_name = "3mm Rope Chain"
-image_url = placeholder_image(item_name)
-upsell = None
+def budget_floor(label: str) -> int:
+    # Used only for recommendation logic
+    if label == "Under $300":
+        return 0
+    if label == "$300–$500":
+        return 300
+    if label == "$500–$1,000":
+        return 500
+    if label == "$1,000–$2,500":
+        return 1000
+    if label == "$2,500–$5,000":
+        return 2500
+    if label == "$5,000+":
+        return 5000
+    return 0
 
-# Your original 5 rules (clean + consistent)
-if budget == "$100" and metal == "Silver":
-    item_name = "Thin Box Chain"
-    image_url = placeholder_image(item_name)
 
-elif budget == "$500" and metal == "Gold":
-    item_name = "3mm Rope Chain"
-    image_url = placeholder_image(item_name)
+def recommend(budget_label: str, metal: str, style: str, occasion: str) -> Product:
+    b = budget_floor(budget_label)
 
-elif budget == "$1000" and style == "Iced Out":
-    item_name = "Diamond Cross Pendant"
-    image_url = placeholder_image(item_name)
+    # High budget → diamond daily luxury
+    if b >= 5000 and style in {"Simple", "Classic"} and occasion in {"Daily Wear", "Business/Formal"}:
+        return CATALOG["tennis_diamond"]
 
-elif budget == "$1000+" and style == "Classic":
-    item_name = "Moissanite Tennis Bracelet"
-    image_url = placeholder_image(item_name)
+    # Engagement/gift direction
+    if occasion in {"Wedding/Engagement", "Gift"} and b >= 1000:
+        return CATALOG["studs_diamond"]
 
-elif budget == "$5000+":
-    item_name = "Real Diamond Tennis Bracelet"
-    image_url = placeholder_image(item_name)
+    # Mid budget daily chain
+    if b >= 1000:
+        return CATALOG["cuban_4mm"]
 
-# Style override (so “Iced Out” always feels iced out)
-# BUT if budget is $5000+, keep the diamond bracelet as main and suggest the pendant as upsell.
-if style == "Iced Out" and budget == "$5000+":
-    upsell = "Diamond Cross Pendant"
-elif style == "Iced Out" and budget != "$5000+":
-    item_name = "Diamond Cross Pendant"
-    image_url = placeholder_image(item_name)
+    # ~$500 daily simple gold chain (your original case)
+    if b >= 500 and metal in {"Yellow Gold", "White Gold", "Rose Gold"} and style == "Simple" and occasion == "Daily Wear":
+        return CATALOG["rope_3mm"]
 
-# ---------- Display ----------
-st.write("---")
-st.header("Recommended Item:")
-st.success(f"**{item_name}**")
+    # Default simple classic
+    return CATALOG["figaro_3_5mm"]
 
-st.image(image_url, caption=item_name, use_container_width=True)
 
-if upsell:
-    st.info(f"Upsell idea: Also show **{upsell}** (iced-out option).")
+# ----------------------------
+# UI Layout
+# ----------------------------
+left, right = st.columns([1, 2.2], gap="large")
 
-st.write("---")
-st.subheader("🗣️ Sales Script")
-st.info(sales_script(item_name, budget, metal, occasion))
+with left:
+    st.markdown('<div class="gj-card">', unsafe_allow_html=True)
+    st.subheader("Customer Details")
+
+    budget = st.selectbox("Budget", ["Under $300", "$300–$500", "$500–$1,000", "$1,000–$2,500", "$2,500–$5,000", "$5,000+"])
+    metal = st.selectbox("Metal", ["Yellow Gold", "White Gold", "Rose Gold", "Silver", "Platinum"])
+    style = st.selectbox("Style", ["Simple", "Classic", "Trendy", "Iced Out", "Luxury"])
+    occasion = st.selectbox("Occasion", ["Daily Wear", "Gift", "Wedding/Engagement", "Party/Club", "Business/Formal"])
+
+    st.markdown('<div class="gj-hr"></div>', unsafe_allow_html=True)
+    st.markdown("**💎 Grand Jewelers Pentagon City — Sales Tool**")
+    st.caption(f"Budget: {budget} | Metal: {metal} | Style: {style} | Occasion: {occasion}")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+product = recommend(budget, metal, style, occasion)
+
+with right:
+    st.markdown("## Recommended Item:")
+    st.markdown(f'<div class="gj-pill">{product.title}</div>', unsafe_allow_html=True)
+    st.write("")
+
+    img_path = ASSETS_DIR / product.local_image
+    img, src = load_image(img_path, product.fallback_url, product.title)
+
+    st.image(img, use_container_width=True, caption=product.title)
+
+    if src != "local":
+        # Small, non-annoying message (no scary red errors)
+        st.caption(
+            f"⚠️ Using **{src}** image. To show YOUR real product photo, upload: `assets/{product.local_image}`"
+        )
+
+    st.markdown('<div class="gj-hr"></div>', unsafe_allow_html=True)
+
+    st.markdown("### 🗣️ Sales Script")
+    st.success(f"Say this: **“{product.talk_track}”**")
+
+    st.markdown("### ✅ Why this fits")
+    st.write(product.why_it_fits)
+
+    st.markdown("### 🔥 Easy add-on to increase ticket")
+    st.write(product.add_on)
+
+    # Show missing image checklist
+    expected_files = sorted({p.local_image for p in CATALOG.values()})
+    missing: List[str] = [f for f in expected_files if not (ASSETS_DIR / f).exists()]
+
+    with st.expander("📸 Missing Images Checklist (upload these to /assets)"):
+        if not ASSETS_DIR.exists():
+            st.warning("Folder not found: `assets/` (create it in the same folder as app.py).")
+        if missing:
+            st.write("These files are missing right now:")
+            for f in missing:
+                st.code(f"assets/{f}", language="text")
+        else:
+            st.success("All images found ✅")
+
+
+# Footer note
+st.caption("Tip: Use clean white background product photos for the most luxury look.")
