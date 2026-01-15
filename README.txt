@@ -17,7 +17,18 @@ st.set_page_config(
 )
 
 APP_DIR = Path(__file__).parent
-ASSETS_DIR = APP_DIR / "assets"
+
+# We will accept BOTH:
+# 1) jewelry-app/assets/
+# 2) jewelry-app/assets/assets/  (if you accidentally made assets inside assets)
+assets_a = APP_DIR / "assets"
+assets_b = APP_DIR / "assets" / "assets"
+
+if assets_b.exists() and any(assets_b.glob("*.jpg")) and not any(assets_a.glob("*.jpg")):
+    ASSETS_DIR = assets_b
+else:
+    ASSETS_DIR = assets_a
+
 
 
 # ----------------------------
