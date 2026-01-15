@@ -1,18 +1,12 @@
-# app.py  ✅ FINAL (with all fixes)
-# What this version fixes:
-# 1) Uses DIFFERENT photos for Yellow/White/Rose/Silver/Platinum (if you upload them)
-# 2) No more “old cached image” problem when you replace photos
-# 3) Works even if you accidentally made assets/assets folder
-# 4) Stops using random “ugly” web photos (shows a clean placeholder until you upload real photos)
-
 import io
+import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple, Dict, List
+from typing import List, Dict, Optional, Tuple
 
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
-
+from PIL import Image
 
 # ----------------------------
 # Page setup
@@ -27,243 +21,288 @@ st.markdown(
     """
     <style>
       .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
-      .gj-card {
-        border: 1px solid #e6e6e6;
-        border-radius: 14px;
-        padding: 16px;
-        background: white;
-      }
-      .gj-pill {
-        background: #e9f8ee;
-        color: #0f6a2a;
-        border-radius: 10px;
-        padding: 10px 12px;
-        font-weight: 600;
-        width: 100%;
-        display: inline-block;
-      }
+      .gj-card { border: 1px solid #e6e6e6; border-radius: 14px; padding: 16px; background: white; }
+      .gj-pill { background: #e9f8ee; color: #0f6a2a; border-radius: 10px; padding: 10px 12px; font-weight: 700; width: 100%; display: inline-block; }
       .gj-muted { color: #6b7280; }
       .gj-hr { border-top: 1px solid #eee; margin: 18px 0; }
-      .small-note { font-size: 0.92rem; color: #6b7280; }
+      .gj-small { font-size: 0.92rem; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ----------------------------
-# Assets folder (fix assets/assets mistake)
-# ----------------------------
 APP_DIR = Path(__file__).parent
+
+# ✅ Use /assets (and also support /assets/assets if you accidentally made it)
 ASSETS_A = APP_DIR / "assets"
 ASSETS_B = APP_DIR / "assets" / "assets"
+ASSETS_A.mkdir(exist_ok=True)
 
-def folder_has_images(folder: Path) -> bool:
-    if not folder.exists():
-        return False
-    return any(folder.glob("*.jpg")) or any(folder.glob("*.jpeg")) or any(folder.glob("*.png"))
+def pick_assets_dir() -> Path:
+    # If assets/assets has images and assets/ has none, use assets/assets
+    a_has = any(ASSETS_A.glob("*.jpg")) or any(ASSETS_A.glob("*.png"))
+    b_has = any(ASSETS_B.glob("*.jpg")) or any(ASSETS_B.glob("*.png"))
+    if b_has and not a_has:
+        return ASSETS_B
+    return ASSETS_A
 
-# If user accidentally made assets/assets and put images there, use it.
-if folder_has_images(ASSETS_B) and not folder_has_images(ASSETS_A):
-    ASSETS_DIR = ASSETS_B
-else:
-    ASSETS_DIR = ASSETS_A
-
-ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+ASSETS_DIR = pick_assets_dir()
 
 
 # ----------------------------
-# Data
+# Helpers
+# ----------------------------
+def slug(s: str) -> str:
+    s = s.strip().lower()
+    s = s.replace("&", "and")
+    s = s.replace("/", "_")
+    s = s.replace(" ", "_")
+    s = s.replace("-", "_")
+    s = s.replace("__", "_")
+    return s
+
+def metal_slug(metal: str) -> str:
+    m = metal.strip().lower()
+    if "yellow" in m: return "yellow"
+    if "white" in m: return "white"
+    if "rose" in m: return "rose"
+    if "silver" in m: return "silver"
+    if "platinum" in m: return "platinum"
+    return "unknown"
+
+def occasion_slug(occ: str) -> str:
+    # keep it short for filenames
+    o = occ.strip().lower()
+    if "daily" in o: return "daily"
+    if "gift" in o: return "gift"
+    if "wedding" in o or "engagement" in o: return "wedding"
+    if "party" in o or "club" in o: return "party"
+    if "business" in o or "formal" in o: return "business"
+    return slug(occ)
+
+def style_slug(sty: str) -> str:
+    s = sty.strip().lower()
+    if "iced" in s: return "iced"
+    if "lux" in s: return "luxury"
+    if "trend" in s: return "trendy"
+    if "classic" in s: return "classic"
+    if "simple" in s: return "simple"
+    return slug(sty)
+
+def build_image_candidates(stem: str, metal: str, style: str, occasion: str) -> List[str]:
+    """
+    Priority order (best first):
+    1) stem_metal_style_occasion.jpg
+    2) stem_metal_style.jpg
+    3) stem_metal.jpg
+    4) stem.jpg
+    """
+    m = metal_slug(metal)
+    s = style_slug(style)
+    o = occasion_slug(occasion)
+    return [
+        f"{stem}_{m}_{s}_{o}.jpg",
+        f"{stem}_{m}_{s}.jpg",
+        f"{stem}_{m}.jpg",
+        f"{stem}.jpg",
+        f"{stem}.png",
+    ]
+
+@st.cache_data(show_spinner=False)
+def load_image_from_web(query: str) -> Optional[Image.Image]:
+    """
+    Gets a nice random stock image from Unsplash Source.
+    This is only a fallback. (Random = not always exact.)
+    """
+    try:
+        q = urllib.parse.quote_plus(query)
+        url = f"https://source.unsplash.com/1600x900/?{q}"
+        with urllib.request.urlopen(url, timeout=8) as resp:
+            data = resp.read()
+        return Image.open(io.BytesIO(data)).convert("RGB")
+    except Exception:
+        return None
+
+@st.cache_data(show_spinner=False)
+def load_best_image(candidates: List[str], web_query: str) -> Tuple[Image.Image, str, str]:
+    """
+    Returns: (image, source_label, used_filename)
+    source_label: local | web | placeholder
+    """
+    # 1) Local
+    for name in candidates:
+        p = ASSETS_DIR / name
+        if p.exists():
+            try:
+                return Image.open(p).convert("RGB"), "local", name
+            except Exception:
+                pass
+
+    # 2) Web fallback (better than ugly placeholder)
+    img = load_image_from_web(web_query)
+    if img is not None:
+        return img, "web", "(web)"
+
+    # 3) Placeholder (last option)
+    img = Image.new("RGB", (1600, 900), (220, 220, 220))
+    return img, "placeholder", "(placeholder)"
+
+
+def budget_floor(label: str) -> int:
+    if label == "Under $300": return 0
+    if label == "$300–$500": return 300
+    if label == "$500–$1,000": return 500
+    if label == "$1,000–$2,500": return 1000
+    if label == "$2,500–$5,000": return 2500
+    if label == "$5,000+": return 5000
+    return 0
+
+
+# ----------------------------
+# Catalog
 # ----------------------------
 @dataclass(frozen=True)
 class Product:
     key: str
     title: str
-    base_image: str  # base image name (example: "cuban_chain.jpg")  -> you can also upload metal versions
+    category: str               # Chain / Bracelet / Ring / Earrings / Pendant
+    stem: str                   # file stem, ex: "cuban_chain"
+    min_budget: int
+    max_budget: int
+    styles: List[str]
+    occasions: List[str]
     talk_track: str
     why_it_fits: str
     add_on: str
+    web_keywords: str           # for web fallback (nice stock image)
 
-
-CATALOG: Dict[str, Product] = {
-    "rope_3mm": Product(
-        key="rope_3mm",
-        title="3mm Rope Chain",
-        base_image="rope_chain.jpg",
-        talk_track="Best seller. Durable and catches light nicely.",
-        why_it_fits="Simple daily chain that looks clean solo or with a pendant. Rope reflects light and hides small scratches well.",
-        add_on="Add a small pendant (cross, initial, or coin) + cleaning kit.",
-    ),
-    "cuban_4mm": Product(
+CATALOG: List[Product] = [
+    # CHAINS
+    Product(
         key="cuban_4mm",
         title="4mm Cuban Link Chain",
-        base_image="cuban_chain.jpg",
+        category="Chain",
+        stem="cuban_chain",
+        min_budget=500,
+        max_budget=2500,
+        styles=["Trendy", "Classic", "Simple", "Luxury"],
+        occasions=["Daily Wear", "Party/Club", "Business/Formal"],
         talk_track="Clean, strong, and sits flat—this is the everyday flex chain.",
-        why_it_fits="Simple but premium. Great daily wear because it lays flat and looks bold without being loud.",
-        add_on="Match with a Cuban bracelet for a set (bundle deal).",
+        why_it_fits="Cuban lays flat, looks premium, and works daily or for party. Easy yes item.",
+        add_on="Match with a Cuban bracelet (bundle deal) + cleaning kit.",
+        web_keywords="cuban link chain jewelry macro",
     ),
-    "figaro_3_5mm": Product(
+    Product(
         key="figaro_3_5mm",
         title="3.5mm Figaro Chain",
-        base_image="figaro_chain.jpg",
+        category="Chain",
+        stem="figaro_chain",
+        min_budget=0,
+        max_budget=1000,
+        styles=["Simple", "Classic"],
+        occasions=["Daily Wear", "Gift", "Business/Formal"],
         talk_track="Italian classic—simple pattern, always in style.",
-        why_it_fits="If they want simple and timeless, Figaro is the safe winner. Easy daily wear, clean look, never goes out of style.",
-        add_on="Offer a free clasp upgrade (or cleaning kit) to close today.",
+        why_it_fits="Safe winner for simple daily wear. Timeless, clean, never goes out of style.",
+        add_on="Offer clasp upgrade OR cleaning kit to close today.",
+        web_keywords="figaro chain gold jewelry closeup",
     ),
-    "tennis_diamond": Product(
-        key="tennis_diamond",
-        title="Real Diamond Tennis Bracelet",
-        base_image="tennis_bracelet.jpg",
-        talk_track="This is quiet luxury—sparkle, but classy and everyday wearable.",
-        why_it_fits="High budget + simple style = tennis bracelet. Elegant, daily friendly, and looks expensive without trying hard.",
-        add_on="Add diamond studs for a matching daily-luxury set.",
+    Product(
+        key="rope_3mm",
+        title="3mm Rope Chain",
+        category="Chain",
+        stem="rope_chain",
+        min_budget=0,
+        max_budget=1000,
+        styles=["Simple", "Classic", "Trendy"],
+        occasions=["Daily Wear", "Gift", "Party/Club"],
+        talk_track="Best seller—durable and catches light nicely.",
+        why_it_fits="Rope reflects light and hides small scratches well. Great for daily wear.",
+        add_on="Add a small pendant (cross/initial) + cleaning kit.",
+        web_keywords="rope chain gold jewelry macro",
     ),
-    "studs_diamond": Product(
-        key="studs_diamond",
+    Product(
+        key="tennis_bracelet_diamond",
+        title="Diamond Tennis Bracelet",
+        category="Bracelet",
+        stem="tennis_bracelet",
+        min_budget=2500,
+        max_budget=999999,
+        styles=["Simple", "Classic", "Luxury"],
+        occasions=["Daily Wear", "Gift", "Business/Formal", "Wedding/Engagement"],
+        talk_track="Quiet luxury—sparkle but still classy and wearable every day.",
+        why_it_fits="High budget + simple style = tennis bracelet. Looks expensive without being loud.",
+        add_on="Add diamond studs for a matching set.",
+        web_keywords="diamond tennis bracelet closeup jewelry",
+    ),
+    Product(
+        key="diamond_studs",
         title="Diamond Stud Earrings",
-        base_image="diamond_studs.jpg",
-        talk_track="Studs are the #1 forever piece—goes with everything.",
-        why_it_fits="For simple daily wear, studs are unbeatable: clean, classic, always appropriate.",
-        add_on="Offer a set: studs + tennis bracelet (bundle + upgrade).",
+        category="Earrings",
+        stem="diamond_studs",
+        min_budget=1000,
+        max_budget=999999,
+        styles=["Simple", "Classic", "Luxury"],
+        occasions=["Daily Wear", "Gift", "Wedding/Engagement", "Business/Formal"],
+        talk_track="Studs are the forever piece—goes with everything.",
+        why_it_fits="Clean, classic, always appropriate. Best gift item too.",
+        add_on="Add a tennis bracelet (bundle + upgrade).",
+        web_keywords="diamond stud earrings closeup jewelry",
     ),
-}
 
-# ----------------------------
-# Simple helpers
-# ----------------------------
-METAL_SLUG = {
-    "Yellow Gold": "yellow",
-    "White Gold": "white",
-    "Rose Gold": "rose",
-    "Silver": "silver",
-    "Platinum": "platinum",
-}
+    # Add one more “Party/Iced” item so categories don’t all show the same:
+    Product(
+        key="iced_cuban",
+        title="Iced Cuban Chain (Diamond Look)",
+        category="Chain",
+        stem="iced_cuban_chain",
+        min_budget=1000,
+        max_budget=999999,
+        styles=["Iced Out", "Luxury", "Trendy"],
+        occasions=["Party/Club"],
+        talk_track="This is the party chain—big shine, big energy.",
+        why_it_fits="If they say party/club + iced out, this is the obvious pick.",
+        add_on="Match with iced bracelet (set) + warranty talk.",
+        web_keywords="iced out cuban chain jewelry diamonds closeup",
+    ),
+]
 
-STYLE_SLUG = {
-    "Simple": "simple",
-    "Classic": "classic",
-    "Trendy": "trendy",
-    "Iced Out": "iced",
-    "Luxury": "luxury",
-}
+def score_product(p: Product, b: int, category: str, style: str, occasion: str) -> int:
+    score = 0
 
-OCCASION_SLUG = {
-    "Daily Wear": "daily",
-    "Gift": "gift",
-    "Wedding/Engagement": "wedding",
-    "Party/Club": "party",
-    "Business/Formal": "business",
-}
+    # Category match matters most
+    if p.category == category:
+        score += 100
+    else:
+        score -= 30
 
-def budget_floor(label: str) -> int:
-    if label == "Under $300":
-        return 0
-    if label == "$300–$500":
-        return 300
-    if label == "$500–$1,000":
-        return 500
-    if label == "$1,000–$2,500":
-        return 1000
-    if label == "$2,500–$5,000":
-        return 2500
-    if label == "$5,000+":
-        return 5000
-    return 0
+    # Budget match
+    if p.min_budget <= b <= p.max_budget:
+        score += 60
+    else:
+        # still allow but reduce
+        if b < p.min_budget: score -= 40
+        if b > p.max_budget: score -= 10
 
+    # Style + occasion
+    if style in p.styles:
+        score += 30
+    if occasion in p.occasions:
+        score += 30
 
-def recommend(budget_label: str, metal: str, style: str, occasion: str) -> Product:
+    # If user wants Iced Out and product is not iced, punish
+    if style == "Iced Out" and "Iced Out" not in p.styles:
+        score -= 50
+
+    return score
+
+def recommend_top3(budget_label: str, category: str, style: str, occasion: str) -> List[Product]:
     b = budget_floor(budget_label)
-
-    # Diamonds for high budget
-    if b >= 5000:
-        if occasion in {"Wedding/Engagement", "Gift"}:
-            return CATALOG["studs_diamond"]
-        return CATALOG["tennis_diamond"]
-
-    # “Iced Out” (even mid budget) → push studs as “sparkle piece”
-    if style == "Iced Out" and b >= 1000:
-        return CATALOG["studs_diamond"]
-
-    # Mid budget daily chain
-    if b >= 1000:
-        return CATALOG["cuban_4mm"]
-
-    # Under $300 daily simple → Figaro safe winner
-    if b < 300 and style == "Simple" and occasion == "Daily Wear":
-        return CATALOG["figaro_3_5mm"]
-
-    # Default
-    return CATALOG["figaro_3_5mm"]
-
-
-def make_placeholder(w: int, h: int, big_text: str, small_text: str) -> Image.Image:
-    """Simple clean placeholder (not ugly random web photos)."""
-    img = Image.new("RGB", (w, h), (235, 235, 235))
-    draw = ImageDraw.Draw(img)
-
-    # Try a default font (works on most systems)
-    try:
-        font_big = ImageFont.truetype("arial.ttf", 52)
-        font_small = ImageFont.truetype("arial.ttf", 28)
-    except Exception:
-        font_big = ImageFont.load_default()
-        font_small = ImageFont.load_default()
-
-    # Center big text
-    bx, by = draw.textbbox((0, 0), big_text, font=font_big)[2:]
-    sx, sy = draw.textbbox((0, 0), small_text, font=font_small)[2:]
-
-    draw.text(((w - bx) / 2, (h * 0.42) - 40), big_text, fill=(50, 50, 50), font=font_big)
-    draw.text(((w - sx) / 2, (h * 0.58)), small_text, fill=(90, 90, 90), font=font_small)
-
-    return img
-
-
-def image_candidates(product: Product, metal: str, style: str, occasion: str) -> List[str]:
-    """
-    We try these names in this order (best -> ok -> fallback).
-    You only need to upload what you want.
-    """
-    metal_s = METAL_SLUG.get(metal, "generic")
-    style_s = STYLE_SLUG.get(style, "any")
-    occ_s = OCCASION_SLUG.get(occasion, "any")
-
-    base = Path(product.base_image).stem   # "cuban_chain"
-    ext = Path(product.base_image).suffix  # ".jpg"
-
-    return [
-        f"{base}_{metal_s}_{style_s}_{occ_s}{ext}",  # super specific
-        f"{base}_{metal_s}_{style_s}{ext}",          # metal + style
-        f"{base}_{metal_s}{ext}",                    # metal only
-        product.base_image,                          # generic
-    ]
-
-
-@st.cache_data(show_spinner=False)
-def load_local_image(path_str: str, file_mtime: float, want_name: str) -> Tuple[Image.Image, str]:
-    """
-    Cache-safe:
-    - file_mtime changes when you replace the image
-    - so Streamlit shows the new photo (no old cached photo)
-    """
-    p = Path(path_str)
-    if p.exists():
-        try:
-            return Image.open(p).convert("RGB"), "local"
-        except Exception:
-            pass
-
-    # Placeholder if missing/broken image
-    img = make_placeholder(
-        1600,
-        900,
-        big_text="UPLOAD PHOTO",
-        small_text=f"assets/{want_name}",
-    )
-    return img, "placeholder"
+    ranked = sorted(CATALOG, key=lambda p: score_product(p, b, category, style, occasion), reverse=True)
+    return ranked[:3]
 
 
 # ----------------------------
-# UI Layout
+# UI
 # ----------------------------
 left, right = st.columns([1, 2.2], gap="large")
 
@@ -273,62 +312,59 @@ with left:
 
     budget = st.selectbox("Budget", ["Under $300", "$300–$500", "$500–$1,000", "$1,000–$2,500", "$2,500–$5,000", "$5,000+"])
     metal = st.selectbox("Metal", ["Yellow Gold", "White Gold", "Rose Gold", "Silver", "Platinum"])
+    category = st.selectbox("Category", ["Chain", "Bracelet", "Ring", "Earrings", "Pendant"])
     style = st.selectbox("Style", ["Simple", "Classic", "Trendy", "Iced Out", "Luxury"])
     occasion = st.selectbox("Occasion", ["Daily Wear", "Gift", "Wedding/Engagement", "Party/Club", "Business/Formal"])
 
     st.markdown('<div class="gj-hr"></div>', unsafe_allow_html=True)
     st.markdown("**💎 Grand Jewelers Pentagon City — Sales Tool**")
-    st.caption(f"Budget: {budget} | Metal: {metal} | Style: {style} | Occasion: {occasion}")
+    st.caption(f"Budget: {budget} | Metal: {metal} | Category: {category} | Style: {style} | Occasion: {occasion}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-product = recommend(budget, metal, style, occasion)
+top3 = recommend_top3(budget, category, style, occasion)
+best = top3[0] if top3 else None
 
 with right:
-    st.markdown("## Recommended Item:")
-    st.markdown(f'<div class="gj-pill">{product.title}</div>', unsafe_allow_html=True)
-    st.write("")
+    st.markdown("## Recommended Items (Top 3):")
 
-    # pick best image file name (metal/style/occasion)
-    candidates = image_candidates(product, metal, style, occasion)
+    for i, p in enumerate(top3, start=1):
+        st.markdown(f"### #{i} {p.title}")
 
-    chosen_name = None
-    chosen_path = None
-    for name in candidates:
-        p = ASSETS_DIR / name
-        if p.exists():
-            chosen_name = name
-            chosen_path = p
-            break
+        # Build local filenames based on metal/style/occasion
+        candidates = build_image_candidates(p.stem, metal, style, occasion)
 
-    # If nothing exists, use first candidate (most specific) so placeholder tells you exactly what to upload
-    if chosen_name is None:
-        chosen_name = candidates[0]
-        chosen_path = ASSETS_DIR / chosen_name
+        # Better web query (adds metal words)
+        web_query = f"{metal} {p.web_keywords}"
 
-    mtime = chosen_path.stat().st_mtime if chosen_path.exists() else 0
-    img, src = load_local_image(str(chosen_path), mtime, chosen_name)
+        img, src, used = load_best_image(candidates, web_query)
+        st.image(img, use_container_width=True, caption=p.title)
 
-    st.image(img, use_container_width=True, caption=product.title)
+        if src != "local":
+            st.info(
+                f"Not using your real photo yet (source: {src}). "
+                f"To force the correct photo, upload ONE of these filenames into `{ASSETS_DIR.name}/`:\n\n"
+                + "\n".join([f"- {ASSETS_DIR.name}/{name}" for name in candidates[:3]])
+            )
+        else:
+            st.success(f"Using your real photo ✅ ({used})")
 
-    if src != "local":
-        st.warning("Photo not found yet. Upload a real product photo so it looks premium.")
-        st.markdown(f"<div class='small-note'>Upload file name: <b>assets/{chosen_name}</b></div>", unsafe_allow_html=True)
+        st.markdown("**🗣️ Sales Script**")
+        st.success(f"Say this: “{p.talk_track}”")
 
-    st.markdown('<div class="gj-hr"></div>', unsafe_allow_html=True)
+        st.markdown("**✅ Why this fits**")
+        st.write(p.why_it_fits)
 
-    st.markdown("### 🗣️ Sales Script")
-    st.success(f"Say this: **“{product.talk_track}”**")
+        st.markdown("**🔥 Easy add-on**")
+        st.write(p.add_on)
 
-    st.markdown("### ✅ Why this fits")
-    st.write(product.why_it_fits)
+        st.markdown('<div class="gj-hr"></div>', unsafe_allow_html=True)
 
-    st.markdown("### 🔥 Easy add-on to increase ticket")
-    st.write(product.add_on)
+    with st.expander("📸 Exactly what to upload (for this selection)"):
+        if best:
+            candidates = build_image_candidates(best.stem, metal, style, occasion)
+            st.write("Upload ONE of these (best first):")
+            for name in candidates:
+                st.code(f"{ASSETS_DIR.name}/{name}", language="text")
 
-    with st.expander("📸 Image names this product can use (upload any of these)"):
-        st.write("Best → OK → fallback. The app will pick the first file it finds.")
-        for name in candidates:
-            st.code(f"assets/{name}", language="text")
-
-st.caption("Tip: Use real iPhone photos + lightbox for premium look. Replace banner graphics with real product photos.")
+st.caption("Tip: Best results = upload real product photos. Web images are only fallback and may be random.")
