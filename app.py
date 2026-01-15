@@ -29,3 +29,10 @@ elif budget == "$5000+":
 st.write("---")
 st.header("Recommended Item:")
 st.success(f"**{recommendation}**")
+
+# ADD THIS NEW PART:
+if recommendation == "Thin Box Chain":
+    st.image("https://m.media-amazon.com/images/I/51b+I0sS+QL._AC_UY1100_.jpg", width=300)
+
+if recommendation == "3mm Rope Chain":
+    st.image("https://m.media-amazon.com/images/I/61F9kL-xLcL._AC_UY1100_.jpg", width=300)
