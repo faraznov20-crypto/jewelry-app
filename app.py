@@ -43,7 +43,8 @@ st.markdown(
 )
 
 # ✅ Always create assets folder (so you never see “Folder not found”)
-ASSETS_DIR = Path(__file__).parent / "assets"
+ASSETS_DIR = Path(__file__).parent / "assets" / "assets"
+
 ASSETS_DIR.mkdir(exist_ok=True)
 
 
