@@ -1,6 +1,6 @@
 """
 Grand Jewelers Pentagon City - Sales Tool
-SIMPLIFIED VERSION - Only needs simple filenames
+UPDATED: Works with existing images + smart fallbacks for Silver/Platinum
 """
 
 import streamlit as st
@@ -42,7 +42,7 @@ def get_assets_dir() -> Path:
 ASSETS_DIR = get_assets_dir()
 
 # ---------------------------------------------------------
-# 3) METAL NAMES (consistent slugs)
+# 3) METAL NAMES WITH SMART FALLBACKS
 # ---------------------------------------------------------
 METAL_SLUG = {
     "Yellow Gold": "yellow_gold",
@@ -52,36 +52,52 @@ METAL_SLUG = {
     "Platinum": "platinum",
 }
 
+# Smart fallback: Silver and Platinum use white_gold images if not available
+METAL_FALLBACK = {
+    "silver": "white_gold",      # Silver shows white gold if no silver image
+    "platinum": "white_gold",    # Platinum shows white gold if no platinum image
+}
+
 SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 
 # ---------------------------------------------------------
-# 4) IMAGE FINDER (smart fallback system)
+# 4) SMART IMAGE FINDER (with metal fallbacks)
 # ---------------------------------------------------------
-def find_image(product_key: str, metal_label: str) -> Path | None:
+def find_image(product_key: str, metal_label: str) -> tuple[Path | None, str]:
     """
-    Find product image with smart fallback:
-    1. Try {product_key}_{metal}.jpg (e.g., rope_chain_yellow_gold.jpg)
-    2. Try {product_key}.jpg (e.g., rope_chain.jpg)
-    3. Return None if not found
+    Find product image with smart fallback system:
+    1. Try {product_key}_{metal}.jpg (exact match)
+    2. If Silver/Platinum: Try white_gold version
+    3. Try {product_key}.jpg (generic fallback)
+    4. Return None if nothing found
+    
+    Returns: (path, source_description)
     """
     metal_slug = METAL_SLUG.get(metal_label, metal_label.lower().replace(" ", "_"))
     
     candidates = []
     
-    # Priority 1: Metal-specific image
+    # Priority 1: Exact metal-specific image
     for ext in SUPPORTED_EXTENSIONS:
-        candidates.append(ASSETS_DIR / f"{product_key}_{metal_slug}{ext}")
-    
-    # Priority 2: Generic product image (fallback)
-    for ext in SUPPORTED_EXTENSIONS:
-        candidates.append(ASSETS_DIR / f"{product_key}{ext}")
-    
-    # Check if any exist
-    for path in candidates:
+        path = ASSETS_DIR / f"{product_key}_{metal_slug}{ext}"
         if path.exists():
-            return path
+            return path, f"Exact match: {metal_label}"
     
-    return None
+    # Priority 2: Smart fallback for Silver/Platinum → use White Gold
+    if metal_slug in METAL_FALLBACK:
+        fallback_metal = METAL_FALLBACK[metal_slug]
+        for ext in SUPPORTED_EXTENSIONS:
+            path = ASSETS_DIR / f"{product_key}_{fallback_metal}{ext}"
+            if path.exists():
+                return path, f"Using White Gold for {metal_label}"
+    
+    # Priority 3: Generic product image (no metal suffix)
+    for ext in SUPPORTED_EXTENSIONS:
+        path = ASSETS_DIR / f"{product_key}{ext}"
+        if path.exists():
+            return path, "Generic image (no metal)"
+    
+    return None, "Not found"
 
 # ---------------------------------------------------------
 # 5) DISPLAY IMAGE WITH STATUS
@@ -90,27 +106,37 @@ def show_product_image(product_key: str, product_title: str, metal_label: str):
     """Display product image or show what's needed"""
     metal_slug = METAL_SLUG[metal_label]
     perfect_filename = f"{product_key}_{metal_slug}.jpg"
-    fallback_filename = f"{product_key}.jpg"
     
-    image_path = find_image(product_key, metal_label)
+    image_path, source = find_image(product_key, metal_label)
     
     if image_path:
         # Image found - display it
         try:
             img = Image.open(image_path)
             st.image(img, caption=f"{metal_label} {product_title}", use_container_width=True)
-            st.success(f"✅ Using: `{image_path.name}`")
+            
+            if "Exact match" in source:
+                st.success(f"✅ Perfect! Using: `{image_path.name}`")
+            elif "White Gold" in source:
+                st.info(f"ℹ️ {source} (showing `{image_path.name}`)")
+            else:
+                st.warning(f"⚠️ Generic image: `{image_path.name}` (upload `{perfect_filename}` for better match)")
+                
         except Exception as e:
             st.error(f"Error loading image: {e}")
     else:
-        # Image missing - show placeholder and instructions
-        st.warning("⚠️ **Product Image Missing**")
+        # Image missing - show instructions
+        st.error("❌ **No Image Found**")
         
         st.markdown(f"**Upload ONE of these files to `{ASSETS_DIR.name}/`:**")
         st.code(f"🥇 Best: {perfect_filename}", language="text")
-        st.code(f"🥈 OK: {fallback_filename}", language="text")
         
-        st.info("💡 Tip: Upload the metal-specific version to show different images when metal changes!")
+        # Show fallback options
+        if metal_slug in METAL_FALLBACK:
+            fallback = METAL_FALLBACK[metal_slug]
+            st.code(f"🥈 OK: {product_key}_{fallback}.jpg (will auto-use for {metal_label})", language="text")
+        
+        st.code(f"🥉 Minimum: {product_key}.jpg", language="text")
 
 # ---------------------------------------------------------
 # 6) PRODUCT CATALOG
@@ -285,36 +311,75 @@ with right_col:
     st.warning(f"**Add-on opportunity:** {product['upsell']}")
 
 # ---------------------------------------------------------
-# 9) IMAGE CHECKLIST (expandable)
+# 9) IMAGE UPLOAD GUIDE (expandable)
 # ---------------------------------------------------------
 st.divider()
 
-with st.expander("📸 Complete Image Upload Checklist"):
-    st.markdown(f"### Upload images to: `{ASSETS_DIR.name}/`")
+with st.expander("📸 What Images Do I Need? (Smart Guide)"):
+    st.markdown(f"### Current Status: Upload to `{ASSETS_DIR.name}/`")
     st.write("")
     
-    # Show what's needed
-    st.markdown("#### 🥇 Best: Metal-Specific Images (Recommended)")
-    st.caption("These allow automatic image switching when metal changes")
+    # Check what exists
+    st.markdown("#### ✅ Your Current Images:")
     
-    needed_metal = []
-    for key in PRODUCTS.keys():
-        for metal_label, slug in METAL_SLUG.items():
-            needed_metal.append(f"{key}_{slug}.jpg")
+    found_images = []
+    for file in ASSETS_DIR.glob("*.*"):
+        if file.suffix.lower() in SUPPORTED_EXTENSIONS:
+            found_images.append(file.name)
     
-    st.code("\n".join(needed_metal[:15]) + f"\n... and {len(needed_metal) - 15} more", language="text")
+    if found_images:
+        for img in sorted(found_images):
+            st.text(f"✓ {img}")
+    else:
+        st.warning("No images found yet!")
     
     st.markdown("---")
-    
-    st.markdown("#### 🥈 Minimum: Base Images Only")
-    st.caption("One image per product (won't change with metal selection)")
-    
-    needed_base = [f"{key}.jpg" for key in PRODUCTS.keys()]
-    st.code("\n".join(needed_base), language="text")
-    
+    st.markdown("#### 💡 Smart Image System:")
     st.write("")
-    st.info("💡 **Start Simple:** Upload base images first, then add metal-specific versions over time!")
+    
+    st.info("""
+    **How it works:**
+    - If you have `rope_chain_yellow_gold.jpg` → Shows for Yellow Gold ✅
+    - If you select Silver but only have `rope_chain_white_gold.jpg` → Shows White Gold image ✅
+    - If you select Platinum but only have `rope_chain_white_gold.jpg` → Shows White Gold image ✅
+    - If you only have `rope_chain.jpg` → Shows for all metals ✅
+    """)
+    
+    st.markdown("#### 📋 Upload Priority:")
+    
+    st.markdown("**🥇 You Already Have (from screenshots):**")
+    st.code("""
+rope_chain_yellow_gold.jpg
+cuban_link_yellow_gold.jpg
+tennis_bracelet_yellow_gold.jpg
+... (and more yellow gold)
+    """, language="text")
+    
+    st.markdown("**🥈 To Add Now (for Rose Gold):**")
+    st.code("""
+rope_chain_rose_gold.jpg
+cuban_link_rose_gold.jpg
+figaro_chain_rose_gold.jpg
+tennis_bracelet_rose_gold.jpg
+diamond_studs_rose_gold.jpg
+herringbone_chain_rose_gold.jpg
+box_chain_rose_gold.jpg
+iced_chain_rose_gold.jpg
+    """, language="text")
+    
+    st.markdown("**🥉 Optional (White Gold covers Silver + Platinum):**")
+    st.code("""
+rope_chain_white_gold.jpg  ← Will show for Silver & Platinum too!
+cuban_link_white_gold.jpg  ← Will show for Silver & Platinum too!
+... (same for all products)
+    """, language="text")
+    
+    st.success("""
+    **💡 Smart Tip:** 
+    You don't need separate Silver and Platinum images! 
+    Just upload White Gold versions and they'll automatically show for Silver/Platinum selections.
+    """)
 
 # Footer
 st.divider()
-st.caption("💎 Grand Jewelers Pentagon City | Sales Tool | Upload photos to assets/ folder")
+st.caption("💎 Grand Jewelers Pentagon City | Sales Tool | Smart metal fallback system enabled")
